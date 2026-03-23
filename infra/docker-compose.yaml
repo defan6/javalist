@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - ${PROJECT_ROOT}/out/pgdata:/var/lib/postgresql
+    restart: always
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - java-list-network
+
+  port-forwarder:
+    image: alpine/socat:1.8.0.3
+    container_name: port-forwarder
+    command: tcp-listen:5432,fork,reuseaddr tcp-connect:postgres:5432
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
+    networks:
+      - java-list-network
+
+  liquibase:
+    image: liquibase/liquibase:4.28
+    container_name: liquibase
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ${PROJECT_ROOT}/src/main/resources/db/changelog:/liquibase/changelog
+    environment:
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      LIQUIBASE_COMMAND_USERNAME: ${POSTGRES_USER}
+      LIQUIBASE_COMMAND_PASSWORD: ${POSTGRES_PASSWORD}
+      LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog/db.changelog-master.yaml
+    networks:
+      - java-list-network
+networks:
+  java-list-network:
+    driver: bridge
